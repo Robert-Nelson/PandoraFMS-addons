@@ -32,8 +32,6 @@ If (WScript.Arguments.Count > 3) Then
 	strPrivilegeLevel = WScript.Arguments(3)
 End If
 
-' On Error Resume Next
-
 ' Map Sensor type to module type and thresholds
 ' 0 = numeric, record has thresholds
 ' 1 = simple flag, 0 normal, > 0 critical
