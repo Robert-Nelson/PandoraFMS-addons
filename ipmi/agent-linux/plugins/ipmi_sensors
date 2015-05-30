@@ -1,0 +1,212 @@
+#!/usr/bin/perl
+# --------------------------------------------------------------
+# IPMI Sensors parser for Windows
+# Used as Plugin in Pandora FMS Monitoring System
+# Written by Robert Nelson <robertn@the-nelsons.org> 2015
+# Licensed under BSD Licence
+# --------------------------------------------------------------
+
+# This plugin uses three parameters:
+#
+# $host_name : Host name or IP address of IPMI device for this machine
+# $user_name : IPMI device user name
+# $user_password : IPMI device user password
+# $privilege_level: IPMI privilege level (default user)
+
+use strict;
+use warnings;
+
+sub exec_program($) {
+	use IPC::Open3;
+	use IO::Select;
+
+	my $cmd = shift;
+	
+	my $pid = open3(\*CHILD_STDIN, \*CHILD_STDOUT, \*CHILD_STDERR, $cmd);
+
+	close(CHILD_STDIN);
+
+	my $sel = new IO::Select(\*CHILD_STDOUT, \*CHILD_STDERR);
+
+	my ($child_stdout, $child_stderr) = ('', '');
+
+	while (my @ready = $sel->can_read(60)) {
+		foreach my $h (@ready)
+		{
+			my ($buf, $count);
+			if ($h eq \*CHILD_STDERR)
+			{
+				$count = sysread(CHILD_STDERR, $buf, 4096);
+				if ($count > 0) {
+					$child_stderr .= $buf;
+				} else {
+					$sel->remove(\*CHILD_STDERR);
+				}
+			} else {
+				$count = sysread(CHILD_STDOUT, $buf, 4096);
+				if ($count > 0) {
+					$child_stdout .= $buf;
+				} else {
+					$sel->remove(\*CHILD_STDOUT);
+				}
+			}
+		}
+		my @active_handles = $sel->handles;
+		if ($#active_handles < 0) {
+			last;
+		}
+	}
+
+	waitpid($pid, 1);
+
+	my $retval = $? >> 8;
+
+	return ($retval, $child_stdout, $child_stderr);
+}
+
+my $help_msg = "ipmi_sensors: usage ipmi_sensors ( local | <hostname> <username> <userpassword> [<ipmiprivilegelevel>] )\n";
+# Take args from command line
+if ($#ARGV < 0) {
+	print STDERR $help_msg;
+	exit 1;
+}
+
+my ( $host_name, $user_name, $user_password, $privilege_level );
+
+$host_name = $ARGV[0];
+if ($host_name ne 'local') {
+	if ($#ARGV < 2) {
+		print STDERR $help_msg;
+		exit 1;
+	}
+	$user_name = $ARGV[1];
+	$user_password = $ARGV[2];
+	$privilege_level = 'user';
+
+	if ($#ARGV > 2) {
+		$privilege_level = $ARGV[3];
+	}
+}
+
+# Map Sensor type to module type and thresholds
+# 0 = numeric, record has thresholds
+# 1 = simple flag, 0 normal, > 0 critical
+# 2 = complex flags, for now ignore alert settings
+# 3 = string or unknown
+
+my %sensor_types = (
+	"Temperature" => 0,
+	"Voltage" => 0,
+	"Current" => 0,
+	"Fan" => 0,
+	"Physical Security" => 1,
+	"Platform Security Violation Attempt" => 1,
+	"Processor" => 2,
+	"Power Supply" => 2,
+	"Power Unit" => 2,
+	"Cooling Device" => 0,
+	"Other Units Based Sensor" => 0,
+	"Memory" => 2,
+	"Drive Slot" => 3,
+	"POST Memory Resize" => 3,
+	"System Firmware Progress" => 1,
+	"Event Logging Disabled" => 2,
+	"Watchdog 1" => 2,
+	"System Event" => 2,
+	"Critical Interrupt" => 1,
+	"Button Switch" => 2,
+	"Module Board" => 3,
+	"Microcontroller Coprocessor" => 3,
+	"Add In Card" => 3,
+	"Chassis" => 3,
+	"Chip Set" => 3,
+	"Other Fru" => 3,
+	"Cable Interconnect" => 3,
+	"Terminator" => 3,
+	"System Boot Initiated" => 2,
+	"Boot Error" => 1,
+	"OS Boot" => 2,
+	"OS Critical Stop" => 1,
+	"Slot Connector" => 2,
+	"System ACPI Power State" => 2,
+	"Watchdog 2" => 2,
+	"Platform Alert" => 2,
+	"Entity Presence" => 2,
+	"Monitor ASIC IC" => 3,
+	"LAN" => 2,
+	"Management Subsystem Health" => 1,
+	"Battery" => 2,
+	"Session Audit" => 3,
+	"Version Change" => 3,
+	"FRU State" => 3,
+	"OEM Reserved" => 3
+);
+
+my $command = 'ipmi-sensors';
+if ($host_name ne 'local') {
+	$command .= " -D LAN_2_0 -h $host_name -u $user_name -p $user_password -l $privilege_level";
+}
+$command .= ' --ignore-not-available-sensors --no-header-output --comma-separated-output --non-abbreviated-units --output-sensor-thresholds --output-event-bitmask';
+
+my ($retval, $stdout, $stderr) = exec_program($command);
+
+my ($module_name, $module_type, $module_warn_min, $module_warn_max, $module_warn_invert, $module_critical_min, $module_critical_max, $module_critical_invert);
+
+if ($retval == 0) {
+	foreach my $line (split(/\n/, $stdout)) {
+		my ($sensor, $name, $type, $value, $units, $lowerNR, $lowerC, $lowerNC, $upperNC, $upperC, $upperNR, $eventmask) = split(/,/, $line);
+
+		$module_name = "$type: $name";
+
+		my ($module_warn_min, $module_warn_max, $module_warn_invert, $module_critical_min, $module_critical_max, $module_critical_invert);
+
+		my $sensor_type = $sensor_types{$type};
+		if ($sensor_type == 0) {
+			$module_type = "generic_data";
+			if ($lowerC ne "N/A" and $upperC ne "N/A") {
+				$module_critical_min = $lowerC;
+				$module_critical_max = $upperC;
+				$module_critical_invert = "1";
+			}
+			if ($lowerNC ne "N/A" and $upperNC ne "N/A") {
+				$module_warn_min = $lowerNC;
+				$module_warn_max = $upperNC;
+				$module_warn_invert = "1";
+			}
+		} elsif ($sensor_type == 1) {
+			$module_type = "generic_data";
+			$module_critical_min = "1";
+			$module_critical_max = "0";
+		} elsif ($sensor_type == 2) {
+			$module_type = "generic_data";
+		} elsif ($sensor_type == 3) {
+			$module_type = "generic_data_string";
+		} else {
+			$module_type = "generic_data_string";
+		}
+
+		print "<module>\n";
+		print "	<name><![CDATA[$module_name]]></name>\n";
+		print "	<type><![CDATA[$module_type]]></type>\n";
+		if ($value eq "N/A") {
+			if ($eventmask =~ /([0-9A-Fa-f]+)h/) {
+				$value = hex $1;
+			} else {
+				$value = $eventmask;
+			}
+		}
+		print "	<data><![CDATA[$value]]></data>\n";
+		print "	<unit><![CDATA[$units]]></unit>\n" if ($units ne "N/A");
+		print "	<min_warning>$module_warn_min</min_warning>\n" if defined $module_warn_min;
+		print "	<max_warning>$module_warn_max</max_warning>\n" if defined $module_warn_max;
+		print "	<warning_inverse>$module_warn_invert</warning_inverse>\n" if defined $module_warn_invert;
+		print "	<min_critical>$module_critical_min</min_critical>\n" if defined $module_critical_min;
+		print "	<max_critical>$module_critical_max</max_critical>\n" if defined $module_critical_max;
+		print "	<critical_inverse>$module_critical_invert</critical_inverse>\n" if defined $module_critical_invert;
+		print "</module>\n";
+	}
+} else {
+	print STDERR "ipmi_sensors: Error Executing - $command\n";
+	print STDERR $stderr;
+	exit 1;
+}
