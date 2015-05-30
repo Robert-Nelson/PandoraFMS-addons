@@ -1,3 +1,3 @@
-*	text=auto eol=crlf
+*	eol=crlf
 .gitattributes	text=auto
 *.exe	-text
