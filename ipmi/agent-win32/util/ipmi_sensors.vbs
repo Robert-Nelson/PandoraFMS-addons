@@ -198,6 +198,7 @@ strErrorOutput = objExec.StdErr.ReadAll
 If strErrorOutput <> "" Then
 	WScript.StdErr.WriteLine "ipmi_sensors: Error Executing - " & strCommand
 	WScript.StdErr.Write strErrorOutput
+	WScript.Quit 1
 End If
 
 WScript.Quit 0
