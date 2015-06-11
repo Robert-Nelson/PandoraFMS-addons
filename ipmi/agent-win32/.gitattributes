@@ -1,3 +1,4 @@
 *	eol=crlf
 .gitattributes	text=auto
 *.exe	-text
+*.dll	-text
