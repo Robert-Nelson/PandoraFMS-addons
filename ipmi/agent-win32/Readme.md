@@ -13,12 +13,12 @@ directory.  Copy the freeipmi directory to the pandora_agent_install directory.
 Then add it to the configuration file, usually pandora_agent.conf in the pandora_agent_install
 directory.
 
-	module_plugin ipmi_sensors -h <hostname> -u <username> -p <password>
+	module_plugin ipmi_sensors /h:<hostname> /u:<username> /p:<password>
 
 Replace &lt;hostname&gt;, &lt;username&gt; and &lt;password&gt; with appropriate values.
 
-If you wish the modules to be in a module group add "-g &lt;group&gt;".  For example:
+If you wish the modules to be in a module group add "/g:&lt;group&gt;".  For example:
 
-	module_plugin ipmi_sensors -l -g "IPMI Sensors"
+	module_plugin ipmi_sensors /h:myipmihost /u:myusername /p:mypassword /g:"IPMI Sensors"
 
 Note: The module group must be created in PandoraFMS in advance.
