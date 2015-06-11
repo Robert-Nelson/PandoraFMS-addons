@@ -1,17 +1,10 @@
 #!/usr/bin/perl
 # --------------------------------------------------------------
-# IPMI Sensors parser for Windows
+# IPMI Sensors parser for Unix
 # Used as Plugin in Pandora FMS Monitoring System
 # Written by Robert Nelson <robertn@the-nelsons.org> 2015
 # Licensed under BSD Licence
 # --------------------------------------------------------------
-
-# This plugin uses three parameters:
-#
-# $host_name : Host name or IP address of IPMI device for this machine
-# $user_name : IPMI device user name
-# $user_password : IPMI device user password
-# $privilege_level: IPMI privilege level (default user)
 
 use strict;
 use warnings;
@@ -32,7 +25,7 @@ sub VERSION_MESSAGE($) {
 sub HELP_MESSAGE($) {
 	my ($fh) = @_;
 
-	print $fh "usage: $0 (-l | -h <hostname> -u <username> -p <password> [-v <privilegelevel>]) [-g <modulegroup>]\n";
+	print $fh "usage: $0 (-l | -h <hostname> -u <username> -p <password>) [-g <modulegroup>]\n";
 	print $fh "\nThis agent plugin can be used for local or remote IPMI monitoring\n";
 	print $fh "For local monitoring:\n";
 	print $fh "-l\n";
@@ -40,7 +33,6 @@ sub HELP_MESSAGE($) {
 	print $fh "-h\tIPMI host name or IP address\n";
 	print $fh "-u\tIPMI user name\n";
 	print $fh "-p\tIPMI password\n";
-	print $fh "-v\tIPMI privilege level (default is user)\n";
 	print $fh "In either case the module can be assigned to a module group using:\n";
 	print $fh "-g\tModule group (must already exist in PandoraFMS)\n";
 }
@@ -95,7 +87,7 @@ sub exec_program($) {
 
 my %options;
 
-if (!getopts('lh:u:p:v:g:', \%options)) {
+if (!getopts('lh:u:p:g:', \%options)) {
 	exit 1;
 }
 
@@ -114,10 +106,7 @@ if (defined $options{'l'}) {
 my $host_name = $options{'h'};
 my $user_name = $options{'u'};
 my $user_password = $options{'p'};
-my $privilege_level = $options{'v'};
 my $module_group = $options{'g'};
-
-$privilege_level = 'user' if !defined $privilege_level;
 
 # Map Sensor type to module type and thresholds
 # 0 = numeric, record has thresholds
@@ -175,15 +164,15 @@ my %sensor_types = (
 
 my $command = 'ipmi-sensors';
 if (defined $host_name) {
-	$command .= " -D LAN_2_0 -h $host_name -u $user_name -p $user_password -l $privilege_level";
+	$command .= " -D LAN_2_0 -h $host_name -u $user_name -p $user_password -l user";
 }
 $command .= ' --ignore-not-available-sensors --no-header-output --comma-separated-output --non-abbreviated-units --output-sensor-thresholds --output-event-bitmask';
 
 my ($retval, $stdout, $stderr) = exec_program($command);
 
-my ($module_name, $module_type, $module_warn_min, $module_warn_max, $module_warn_invert, $module_critical_min, $module_critical_max, $module_critical_invert);
-
 if ($retval == 0) {
+	my ($module_name, $module_type, $module_warn_min, $module_warn_max, $module_warn_invert, $module_critical_min, $module_critical_max, $module_critical_invert);
+
 	foreach my $line (split(/\n/, $stdout)) {
 		my ($sensor, $name, $type, $value, $units, $lowerNR, $lowerC, $lowerNC, $upperNC, $upperC, $upperNR, $eventmask) = split(/,/, $line);
 
