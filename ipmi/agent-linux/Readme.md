@@ -3,7 +3,7 @@ PandoraFMS Unix Agent Plugin: ipmi_sensors
 
 This PandoraFMS Agent plugin for unix creates a module for each IPMI sensor.
 
-To install, copy plugins/ipmi_sensors to the plugins directory which is usually 
+To install, copy ipmi_sensors to the plugins directory which is usually 
 /usr/share/pandora_agent/plugins.  This plugin requires freeipmi to be installed
 and available on the agent's path.
 
